@@ -1,3 +1,0 @@
-WorkflowError in file /home/yxiaobo/APIARC3/data/CHIPPROJ/snakefile, line 2:
-Workflow defines configfile data/CHIPPROJ/config.yaml but it is not present or accessible (full checked path: /home/yxiaobo/APIARC3/data/CHIPPROJ/data/CHIPPROJ/config.yaml).
-  File "/home/yxiaobo/APIARC3/data/CHIPPROJ/snakefile", line 2, in <module>
