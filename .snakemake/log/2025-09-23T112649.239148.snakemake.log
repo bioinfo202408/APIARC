@@ -1,0 +1,6 @@
+Building DAG of jobs...
+MissingInputException in rule calculate_eRNA_gene_distance in file /home/yxiaobo/APIARC3/data/INTEGRATEDPROJ/script/Enhancer/snakefile, line 49:
+Missing input files for rule calculate_eRNA_gene_distance:
+    output: data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed, data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb.bed
+    affected files:
+        data/INTEGRATEDPROJ/Promoter/mESC_18h_DOX_all_peaks.bed

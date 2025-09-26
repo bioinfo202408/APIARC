@@ -1,0 +1,324 @@
+import yaml
+import matplotlib.pyplot as plt
+
+configfile: "config.yaml"
+# Get Conda installation path from configuration file
+conda_install_path = config["conda_install_path"]
+# Initialize pre-run environment
+shell.prefix(f"source ~/.bashrc; source {conda_install_path}/etc/profile.d/conda.sh; conda activate APIARC; ")
+GROUPS = config["groups"]
+groupnames = config["groupnames"]
+group2sample = {v: k for k, v in groupnames.items()}
+P_prefixes = [k for k, v in groupnames.items() if v == "P"]
+with open("data/CHIPPROJ/bam_bwfile/bambw_list.yaml") as f:
+    bwcfg = yaml.safe_load(f)
+P_sample = group2sample["P"]
+P_keys = [k for prefix in P_prefixes for k in bwcfg if k.startswith(prefix)]
+bw1_files = [bwcfg[k]["bw1"] for k in P_keys]
+bw2_file = bwcfg[P_keys[0]]["bw2"] if P_keys else ""
+bwfiles = bw1_files + ([bw2_file] if bw2_file else [])
+P_sample_names = [k for k in bwcfg if any(k.startswith(prefix) for prefix in P_prefixes)]
+input_sample_name = group2sample.get("Input", "Input")
+names_list = P_sample_names + [input_sample_name]
+names_str = ",".join(names_list)
+n_samples = len(names_list)
+colors = [plt.cm.tab10(i % 10) for i in range(n_samples)]
+color_list = ["'#%02x%02x%02x'" % (int(r*255),int(g*255),int(b*255)) for r,g,b,a in colors]
+colors_str = " ".join(color_list)
+
+rule all:
+    input:
+        "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed",
+        "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb.bed",
+        "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb_signal.tab",
+        "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb_signal.tab",
+        "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed",
+        "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb_signal.tab",
+        "data/INTEGRATEDPROJ/Enhancer/picture/Ture_enh_gene_within_1mb_profile.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/file/GO_enrich_common_gene.csv",
+        "data/INTEGRATEDPROJ/Enhancer/file/KEGG_GSEA_common_gene.csv",
+        "data/INTEGRATEDPROJ/Enhancer/file/GO_network.graphml",
+        "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_up_genes_plotProfile.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_down_genes_plotProfile.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_up_list.txt",
+        "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_down_list.txt",
+        "data/INTEGRATEDPROJ/Enhancer/picture/TF_up_gene_heatmap.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/picture/TF_down_gene_heatmap.pdf"
+
+# eRNA-Gene Distance Calculation
+rule calculate_eRNA_gene_distance:
+    input:
+        yaml = "data/INTEGRATEDPROJ/script/Promoter/config.yaml",
+        genefile = f"data/INTEGRATEDPROJ/Promoter/file/{P_sample}_all_peaks.bed"
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed",
+        "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb.bed"
+    params:
+        enhfile = "reference/Enhancer_anno/refGene.ncbiRefSeq.genecode.filtered.bed",
+        genefile = f"data/INTEGRATEDPROJ/Promoter/file/{P_sample}_all_peaks.bed",
+        outfile = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed",
+        randbed = "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb.bed"
+    shell:
+        """
+        perl data/INTEGRATEDPROJ/script/Enhancer/calculate_eRNA_gene_distance.pl \
+            --enhfile {params.enhfile} \
+            --genefile {params.genefile} \
+            --outfile {params.outfile} \
+            --randbed {params.randbed}
+        """
+
+# Signal Computation for Enhancer-Gene Associations
+rule Computational_signal:
+    input:
+        yaml = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        enh = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed"
+    output:
+        matrix_output = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb_matrix.gz",
+        tab_output = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb_signal.tab"
+    params:
+        enh_bedfile = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed",
+        bwfiles = " ".join(bwfiles)
+    shell:
+        """
+        computeMatrix reference-point -R {params.enh_bedfile} -S {params.bwfiles} \
+          -b 1000 -a 1000 --binSize 10 -p 20 -o {output.matrix_output} --outFileNameMatrix {output.tab_output}
+        """
+
+# Signal Computation for Random Enhancer-Gene Associations
+rule Computational_random_signal:
+    input:
+        yaml = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        randbed = "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb.bed"
+    output:
+        matrix_output = "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb_matrix.gz",
+        tab_output = "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb_signal.tab"
+    params:
+        enh_bedfile = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed",
+        bwfiles = " ".join(bwfiles)
+    shell:
+        """
+        computeMatrix reference-point -R {params.enh_bedfile} -S {params.bwfiles} \
+          -b 1000 -a 1000 --binSize 10 -p 20 -o {output.matrix_output} --outFileNameMatrix {output.tab_output}
+        """
+
+# True Enhancer Identification by Signal Comparison
+rule Calculate_signal:
+    input:
+        matrix1 = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb_signal.tab",
+        matrix2 = "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb_signal.tab"
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed"
+    params:
+        matrix1 = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb_signal.tab",
+        matrix2 = "data/INTEGRATEDPROJ/Enhancer/file/random_enh_gene_within_1mb_signal.tab",
+        name = names_str,
+        enh = "data/INTEGRATEDPROJ/Enhancer/file/enh_gene_within_1mb.bed",
+        output = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed"
+    shell:
+        """
+        Rscript data/INTEGRATEDPROJ/script/Enhancer/Calculate_signal.R \
+            -m {params.matrix1} \
+            -n {params.matrix2} \
+            -s {params.name} \
+            -a {params.enh} \
+            -o {params.output}
+        """
+
+# Signal Computation for Validated Enhancers
+rule Computational_ture_enh_signal:
+    input:
+        yaml = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        ture_enh_bedfile = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed"
+    output:
+        matrix_output = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb_matrix.gz",
+        tab_output = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb_signal.tab"
+    params:
+        ture_enh_bedfile = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed",
+        bwfiles = " ".join(bwfiles)
+    shell:
+        """
+        computeMatrix reference-point -R {params.ture_enh_bedfile} -S {params.bwfiles} \
+          -b 1000 -a 1000 --binSize 10 -p 20 -o {output.matrix_output} --outFileNameMatrix {output.tab_output}
+        """
+
+# Enhancer Signal Profile Visualization
+rule plot_ture_enh_signal:
+    input:
+        matrix = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb_matrix.gz"
+    output:
+        plot = "data/INTEGRATEDPROJ/Enhancer/picture/Ture_enh_gene_within_1mb_profile.pdf"
+    params:
+        colors = colors_str,
+        plotTitle = "Ture_enhancer_from_peaks",
+        samples_label = names_list,
+        prefix = "Ture_enhancer"
+    shell:
+        """
+        plotProfile -m {input.matrix} -out {output.plot} \
+            --plotType fill --colors {params.colors} \
+            --plotTitle {params.plotTitle} \
+            --perGroup \
+            --samplesLabel {params.samples_label} \
+            --plotHeight 6 --plotWidth 15
+        """
+
+# Enhancer-Gene Correlation Analysis and Visualization
+rule Enhancer_plot:
+    input:
+        yaml = "data/INTEGRATEDPROJ/script/Enhancer/config.yaml",
+        enh = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed",
+        matrix = "data/CHIPPROJ/Macs2/group_matrix.txt"
+    output:
+        expand("data/INTEGRATEDPROJ/Enhancer/file/{group}_all_peaks.bed", group=GROUPS),
+        expand("data/INTEGRATEDPROJ/Enhancer/file/{group}_down_peaks.bed", group=GROUPS),
+        expand("data/INTEGRATEDPROJ/Enhancer/file/{group}_up_peaks.bed", group=GROUPS),
+        "data/INTEGRATEDPROJ/Enhancer/picture/RNA_ChIP_col_plot_same_direction.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/picture/common_genes_volcano_plot.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/picture/common_up_genes_venn_diagram.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/picture/common_down_genes_venn_diagram.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/file/GO_enrich_common_gene.csv",
+        "data/INTEGRATEDPROJ/Enhancer/file/KEGG_GSEA_common_gene.csv",
+        "data/INTEGRATEDPROJ/Enhancer/picture/KEGG_GSEA_Top10_Multipage.pdf"
+    params:
+        RNAseq = "data/RNAPROJ/DEG/DEG_result.csv",
+        ChIPseq = "data/CHIPPROJ/annotations",
+        matrix = "data/CHIPPROJ/Macs2/group_matrix.txt",
+        yaml = "data/INTEGRATEDPROJ/script/Enhancer/config.yaml",
+        enh = "data/INTEGRATEDPROJ/Enhancer/file/Ture_enh_gene_within_1mb.bed",  
+        output = "data/INTEGRATEDPROJ/Enhancer/file",  
+        pdf = "data/INTEGRATEDPROJ/Enhancer/picture" 
+    shell:
+        """
+        Rscript data/INTEGRATEDPROJ/script/Enhancer/enhancer_cor_plot.R \
+            --RNAseq {params.RNAseq} \
+            --ChIPseq {params.ChIPseq} \
+            --matrix {params.matrix} \
+            --yaml {params.yaml} \
+            --enh {params.enh} \
+            --output {params.output} \
+            --picture {params.pdf}
+        """
+rule Network_construction:
+    input:
+        GO_csv = "data/INTEGRATEDPROJ/Enhancer/file/GO_enrich_common_gene.csv",
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/file/GO_network.graphml"
+    params:
+        GO_csv = "data/INTEGRATEDPROJ/Enhancer/file/GO_enrich_common_gene.csv",
+        graphml = "data/INTEGRATEDPROJ/Enhancer/file"
+    shell:
+        """
+        Rscript data/INTEGRATEDPROJ/script/Enhancer/GO_Network_construction.R \
+            -g {params.GO_csv} \
+            -o {params.graphml}
+        """
+# Transcription Factor Motif Enrichment in Enhancers
+rule Motif_tf_Enhancer:
+    input:
+        yaml = "data/INTEGRATEDPROJ/script/Enhancer/config.yaml",
+        bwfile = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        GOfile = "data/INTEGRATEDPROJ/Enhancer/file/KEGG_GSEA_common_gene.csv"
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/file/Enhancer_both_up_genes_target_seqs.fasta",
+        "data/INTEGRATEDPROJ/Enhancer/file/Enhancer_both_down_genes_target_seqs.fasta",
+        "data/INTEGRATEDPROJ/Enhancer/file/TF_motif_network_up.txt",
+        "data/INTEGRATEDPROJ/Enhancer/file/TF_motif_network_down.txt",
+        "data/INTEGRATEDPROJ/Enhancer/file/TF_gene_mapping_up.txt",
+        "data/INTEGRATEDPROJ/Enhancer/file/TF_gene_mapping_down.txt",
+        "data/INTEGRATEDPROJ/Enhancer/file/Enhancer_both_up_genes_matrix.gz",
+        "data/INTEGRATEDPROJ/Enhancer/file/Enhancer_both_up_genes_signal.tab",
+        "data/INTEGRATEDPROJ/Enhancer/file/Enhancer_both_down_genes_matrix.gz",
+        "data/INTEGRATEDPROJ/Enhancer/file/Enhancer_both_down_genes_signal.tab",
+        "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_up_genes_plotProfile.pdf",
+        "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_down_genes_plotProfile.pdf"
+    params:
+        motifdir = "reference/Motif_tf_anno/JASPAR_CORE",
+        motifmapfile = "reference/Motif_tf_anno/JASPAR_CORE_ID_to_NAME.txt",  
+        groupfile = "data/INTEGRATEDPROJ/script/Enhancer/config.yaml",  
+        bwfile = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        outputdir = "data/INTEGRATEDPROJ/Enhancer/file",
+        outpic = "data/INTEGRATEDPROJ/Enhancer/picture"
+    shell:
+        """
+        perl data/INTEGRATEDPROJ/script/Enhancer/TF_motif_enrichment_pipeline.pl \
+            --motifdir {params.motifdir} \
+            --motifmapfile {params.motifmapfile} \
+            --groupfile {params.groupfile} \
+            --bwfile {params.bwfile} \
+            --outputdir {params.outputdir} \
+            --outpic {params.outpic}
+        """
+
+# Extract Enriched Motifs for Up-regulated Genes in Enhancers
+rule extr_up_gene_enriched_motifs:
+    input:
+        motif_result1 = "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_up_genes_plotProfile.pdf",
+        motif_result2 = "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_down_genes_plotProfile.pdf"
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_up_list.txt"
+    params:
+        yamlfile = "data/INTEGRATEDPROJ/script/Enhancer/config.yaml",
+        motifdir = "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_up"
+    shell:
+        """
+        perl data/INTEGRATEDPROJ/script/Enhancer/extr_enriched_motifs.pl \
+            --yamlfile {params.yamlfile} \
+            --motifdir {params.motifdir} \
+        """
+
+# Extract Enriched Motifs for Down-regulated Genes in Enhancers
+rule extr_down_gene_enriched_motifs:
+    input:
+        motif_result1 = "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_up_genes_plotProfile.pdf",
+        motif_result2 = "data/INTEGRATEDPROJ/Enhancer/picture/Enhancer_both_down_genes_plotProfile.pdf"
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_down_list.txt"
+    params:
+        yamlfile = "data/INTEGRATEDPROJ/script/Enhancer/config.yaml",
+        motifdir = "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_down"
+    shell:
+        """
+        perl data/INTEGRATEDPROJ/script/Enhancer/extr_enriched_motifs.pl \
+            --yamlfile {params.yamlfile} \
+            --motifdir {params.motifdir} \
+        """
+        
+# Transcription Factor Heatmap for Up-regulated Genes in Enhancers
+rule TF_motif_plot_up:
+    input:
+        TF_gene = "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_up_list.txt",
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/picture/TF_up_gene_heatmap.pdf"
+    params:
+        RNAseq = "data/RNAPROJ/DEG/DEG_result.csv",
+        TF_gene = "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_up_list.txt",
+        output = "data/INTEGRATEDPROJ/Enhancer/file",
+        picture = "data/INTEGRATEDPROJ/Enhancer/picture/TF_up_gene_heatmap.pdf"
+    shell:
+        """
+        Rscript data/INTEGRATEDPROJ/script/Enhancer/TF_motif_plot.R \
+            --RNAseq {params.RNAseq} \
+            --TF_gene {params.TF_gene} \
+            --output {params.output} \
+            --picture {params.picture}
+        """
+
+# Transcription Factor Heatmap for Down-regulated Genes in Enhancers
+rule TF_motif_plot_down:
+    input:
+        TF_gene = "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_down_list.txt",
+    output:
+        "data/INTEGRATEDPROJ/Enhancer/picture/TF_down_gene_heatmap.pdf"
+    params:
+        RNAseq = "data/RNAPROJ/DEG/DEG_result.csv",
+        TF_gene = "data/INTEGRATEDPROJ/Enhancer/file/Motif_result_down_list.txt",
+        output = "data/INTEGRATEDPROJ/Enhancer/file",
+        picture = "data/INTEGRATEDPROJ/Enhancer/picture/TF_down_gene_heatmap.pdf"
+    shell:
+        """
+        Rscript data/INTEGRATEDPROJ/script/Enhancer/TF_motif_plot.R \
+            --RNAseq {params.RNAseq} \
+            --TF_gene {params.TF_gene} \
+            --output {params.output} \
+            --picture {params.picture}
+        """

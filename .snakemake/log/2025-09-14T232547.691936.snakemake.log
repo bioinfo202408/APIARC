@@ -1,0 +1,49 @@
+Config file data/CHIPPROJ/config.yaml is extended by additional config specified via the command line.
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 15
+Rules claiming more threads will be scaled down.
+Job stats:
+job                count
+---------------  -------
+all                    1
+annoChIPPeaks          1
+run_peakcalling        1
+total                  3
+
+Select jobs to execute...
+
+[Sun Sep 14 23:25:48 2025]
+rule run_peakcalling:
+    input: data/CHIPPROJ/bam_bwfile/bambw_list.yaml, data/CHIPPROJ/bam_bwfile/SRR5297329_sorted.unique.bam, data/CHIPPROJ/bam_bwfile/SRR5297330_sorted.unique.bam, data/CHIPPROJ/bam_bwfile/SRR5297331_sorted.unique.bam, data/CHIPPROJ/bam_bwfile/SRR5297328_sorted.unique.bam, data/CHIPPROJ/bam_bwfile/SRR5297327_sorted.unique.bam, data/CHIPPROJ/bam_bwfile/SRR5297329.bw, data/CHIPPROJ/bam_bwfile/SRR5297330.bw, data/CHIPPROJ/bam_bwfile/SRR5297331.bw, data/CHIPPROJ/bam_bwfile/SRR5297328.bw, data/CHIPPROJ/bam_bwfile/SRR5297327.bw
+    output: data/CHIPPROJ/Macs2/mESC_18h_DOX/mESC_18h_DOX_matrix_values.tab, data/CHIPPROJ/Macs2/mESC_12h_DOX/mESC_12h_DOX_matrix_values.tab
+    jobid: 33
+    reason: Missing output files: data/CHIPPROJ/Macs2/mESC_18h_DOX/mESC_18h_DOX_matrix_values.tab, data/CHIPPROJ/Macs2/mESC_12h_DOX/mESC_12h_DOX_matrix_values.tab
+    resources: tmpdir=/tmp
+
+
+[Sun Sep 14 23:25:48 2025]
+rule annoChIPPeaks:
+    input: data/CHIPPROJ/bam_bwfile/bambw_list.yaml
+    output: data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv
+    jobid: 34
+    reason: Missing output files: data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv
+    resources: tmpdir=/tmp
+
+[Sun Sep 14 23:26:00 2025]
+Error in rule annoChIPPeaks:
+    jobid: 34
+    input: data/CHIPPROJ/bam_bwfile/bambw_list.yaml
+    output: data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv
+    shell:
+        
+        Rscript data/CHIPPROJ/scripts/annoChIPPeaks.R             --directory data/CHIPPROJ             --yaml data/CHIPPROJ/bam_bwfile/bambw_list.yaml             --output data/CHIPPROJ/annotations             --pdf data/CHIPPROJ/pdf_plots 
+        
+        (one of the commands exited with non-zero exit code; note that snakemake uses bash strict mode!)
+
+[Mon Sep 15 00:51:49 2025]
+Finished job 33.
+1 of 3 steps (33%) done
+Shutting down, this might take some time.
+Exiting because a job execution failed. Look above for error message
+Complete log: .snakemake/log/2025-09-14T232547.691936.snakemake.log

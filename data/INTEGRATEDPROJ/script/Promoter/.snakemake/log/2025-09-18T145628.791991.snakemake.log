@@ -1,0 +1,7 @@
+Building DAG of jobs...
+MissingInputException in rule promoter_plot in file /home/yxiaobo/APIARC3/data/INTEGRATEDPROJ/script/Promoter/snakefile, line 25:
+Missing input files for rule promoter_plot:
+    output: data/INTEGRATEDPROJ/Promoter/mESC_18h_DOX_all_peaks.bed, data/INTEGRATEDPROJ/Promoter/mESC_12h_DOX_all_peaks.bed, data/INTEGRATEDPROJ/Promoter/mESC_18h_DOX_down_peaks.bed, data/INTEGRATEDPROJ/Promoter/mESC_12h_DOX_down_peaks.bed, data/INTEGRATEDPROJ/Promoter/mESC_18h_DOX_up_peaks.bed, data/INTEGRATEDPROJ/Promoter/mESC_12h_DOX_up_peaks.bed, data/INTEGRATEDPROJ/Promoter/RNA_ChIP_col_plot_same_direction.pdf, data/INTEGRATEDPROJ/Promoter/common_genes_volcano_plot.pdf, data/INTEGRATEDPROJ/Promoter/common_up_genes_venn_diagram.pdf, data/INTEGRATEDPROJ/Promoter/common_down_genes_venn_diagram.pdf, data/INTEGRATEDPROJ/Promoter/GO_enrich_common_gene.csv, data/INTEGRATEDPROJ/Promoter/KEGG_GSEA_common_gene.csv
+    affected files:
+        data/INTEGRATEDPROJ/script/Promoter/config.yaml
+        data/CHIPPROJ/Macs2/group_matrix.txt

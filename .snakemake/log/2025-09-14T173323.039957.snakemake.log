@@ -1,0 +1,37 @@
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 15
+Rules claiming more threads will be scaled down.
+Job stats:
+job           count
+----------  -------
+all               1
+deseq_plot        1
+total             2
+
+Select jobs to execute...
+
+[Sun Sep 14 17:33:23 2025]
+rule deseq_plot:
+    input: data/RNAPROJ/logs/hisat2_summary.log, data/RNAPROJ/DEG/DEG_result.csv
+    output: data/RNAPROJ/DEG/UP_genes_name.csv, data/RNAPROJ/DEG/DOWN_genes_name.csv, data/RNAPROJ/picture/DOX/sample_PCA.pdf
+    jobid: 1
+    reason: Missing output files: data/RNAPROJ/DEG/DOWN_genes_name.csv, data/RNAPROJ/DEG/UP_genes_name.csv
+    resources: tmpdir=/tmp
+
+[Sun Sep 14 17:33:28 2025]
+Finished job 1.
+1 of 2 steps (50%) done
+Select jobs to execute...
+
+[Sun Sep 14 17:33:28 2025]
+localrule all:
+    input: data/RNAPROJ/DEG/UP_genes_name.csv, data/RNAPROJ/DEG/DOWN_genes_name.csv, data/RNAPROJ/picture/DOX/sample_PCA.pdf
+    jobid: 0
+    reason: Input files updated by another job: data/RNAPROJ/DEG/UP_genes_name.csv, data/RNAPROJ/DEG/DOWN_genes_name.csv, data/RNAPROJ/picture/DOX/sample_PCA.pdf
+    resources: tmpdir=/tmp
+
+[Sun Sep 14 17:33:28 2025]
+Finished job 0.
+2 of 2 steps (100%) done
+Complete log: .snakemake/log/2025-09-14T173323.039957.snakemake.log

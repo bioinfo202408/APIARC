@@ -1,0 +1,40 @@
+#config.yaml
+
+# Your conda.sh path:{conda_install_path}/etc/profile.d/conda.sh
+conda_install_path: /home/yxiaobo/miniconda3    ## Enter the prefix path of your Miniconda installation {conda_install_path}
+
+## Note: Ensure {groupname_repx}, {treat_bam}, {control_bam}, {genome}, {qval}, {groupname} match the corresponding parameters in CHIPPROJ's config.yaml (data/CHIPPROJ/config.yaml)
+file:
+  mESC_18h_DOX_rep1:        ## Name each of your experimental and control sample groups {groupname_repx}
+    treat_bam: SRR5297329   ## Enter your treatment group SRR ID
+    control_bam: SRR5297331 ## Enter your control group SRR ID
+    genome: mm              ## Select your species: mm (mouse) or hg (human)
+    qval: 0.05              ## Select the p-value threshold you want to use
+
+  mESC_18h_DOX_rep2:    
+    treat_bam: SRR5297330
+    control_bam: SRR5297331
+    genome: mm
+    qval: 0.05
+  
+  mESC_12h_DOX_rep1:
+    treat_bam: SRR5297327
+    control_bam: SRR5297331
+    genome: mm
+    qval: 0.05
+
+  mESC_12h_DOX_rep2:
+    treat_bam: SRR5297328
+    control_bam: SRR5297331
+    genome: mm
+    qval: 0.050
+
+# Sample grouping - Remove repx and assign samples to experimental and control groups correctly
+groupnames:      
+  mESC_18h_DOX: P    ## P for treatment group
+  mESC_12h_DOX: T    ## T for control group
+
+# Group list corresponding to groupnames configuration (Note: a space is required after the dash)
+groups:  
+  - mESC_18h_DOX 
+  - mESC_12h_DOX

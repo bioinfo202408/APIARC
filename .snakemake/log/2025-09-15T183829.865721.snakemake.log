@@ -1,0 +1,38 @@
+Config file data/CHIPPROJ/config.yaml is extended by additional config specified via the command line.
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 15
+Rules claiming more threads will be scaled down.
+Job stats:
+job              count
+-------------  -------
+all                  1
+annoChIPPeaks        1
+total                2
+
+Select jobs to execute...
+
+[Mon Sep 15 18:38:30 2025]
+rule annoChIPPeaks:
+    input: data/CHIPPROJ/bam_bwfile/bambw_list.yaml
+    output: data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv
+    jobid: 1
+    reason: Missing output files: data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv
+    resources: tmpdir=/tmp
+
+[Mon Sep 15 18:39:03 2025]
+Finished job 1.
+1 of 2 steps (50%) done
+Select jobs to execute...
+
+[Mon Sep 15 18:39:03 2025]
+localrule all:
+    input: data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv
+    jobid: 0
+    reason: Input files updated by another job: data/CHIPPROJ/annotations/mESC_12h_DOX/promoter_peaks.csv, data/CHIPPROJ/annotations/mESC_18h_DOX/promoter_peaks.csv
+    resources: tmpdir=/tmp
+
+[Mon Sep 15 18:39:03 2025]
+Finished job 0.
+2 of 2 steps (100%) done
+Complete log: .snakemake/log/2025-09-15T183829.865721.snakemake.log

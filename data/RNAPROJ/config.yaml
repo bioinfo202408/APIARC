@@ -1,0 +1,38 @@
+#config.yaml
+
+# Path to your conda.sh: {conda_install_path}/etc/profile.d/conda.sh
+conda_install_path: /home/yxiaobo/miniconda3        ## Enter the prefix path of your Miniconda installation
+
+# Reference genome configuration
+genome:
+  indexdir: "reference/hisat2_index/mousehisat2Index/GRCm38"       ## Path to the HISAT2 reference genome index (mouse or human)
+  gfffile: "reference/annotation/gencode.vM25.annotation.gtf"             ## Path to the StringTie reference annotation file (GTF format, mouse（vM25） or human（v44）)
+  bed_path: "reference/annotation/gencode.vM25.annotation.bed"           ## Path to the gene annotation file (BED format) for mouse (vM25) or human (v44)
+
+# Thread configuration (Numbers indicate CPU cores used by different rules in the RNAPROJ Snakefile; adjust based on available resources)
+threads:
+  trim_galore: 4  ## Quality control threads
+  hisat2: 4       ## Alignment threads
+  samtools: 4     ## SAM/BAM conversion and sorting threads
+  stringtie: 5    ## Transcript assembly threads
+
+# Deduplication parameters
+picard:
+  java_mem: "-Xmx15g"  ## JVM maximum heap memory set to 15GB (adjust based on available memory)
+  remove_dups: "true"  ## Whether to remove duplicate reads: "true" or "false" (recommended: "true")
+  picarddir: "reference/picard-2.18.2"  ### Picard installation directory path (usually no need to change)
+
+# Sample list generation
+names:                        
+  mESC_24h_DOX_1: SRR4032346  ## Mapping of group names (e.g., mESC_24h_DOX_1) to sample SRR IDs (e.g., SRR4032346). Modify or add/remove entries as needed.
+  mESC_24h_DOX_2: SRR4032347
+  mESC_no_DOX_1: SRR4032348
+  mESC_no_DOX_2: SRR4032349
+
+# Experimental group assignment
+group:
+  sample_IDs:     
+    mESC_24h_DOX_1: P   ## Group names must match those in 'names' section. P = Treatment group, T = Control group.
+    mESC_24h_DOX_2: P
+    mESC_no_DOX_1: T  
+    mESC_no_DOX_2: T

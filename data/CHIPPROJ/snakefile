@@ -1,0 +1,267 @@
+# Read configuration file
+configfile: "data/CHIPPROJ/config.yaml"
+# Get Conda installation path from configuration file
+conda_install_path = config["conda_install_path"]
+
+GROUPS=config["groups"]
+# Initialize pre-run environment
+shell.prefix(f"source ~/.bashrc; source {conda_install_path}/etc/profile.d/conda.sh; conda activate APIARC; ")
+
+
+# Classify single-end and paired-end samples
+sample_IDs, comps, =glob_wildcards("data/CHIPPROJ/fastqfile/{sample}_1.fastq{comp,(\.gz)?}")
+paired_end = []
+single_end = []
+for sample in sample_IDs:
+    # Check if corresponding _2 file exists
+    if os.path.exists(f"data/CHIPPROJ/fastqfile/{sample}_2.fastq") or os.path.exists(f"data/CHIPPROJ/fastqfile/{sample}_2.fastq.gz"):
+        paired_end.append(sample)  
+    else:
+        single_end.append(sample)  
+print(paired_end)
+print(single_end)
+
+
+# Generate output files
+rule all:
+    input:
+        expand("data/CHIPPROJ/QCfile/{sample}_1_val_1.fq.gz" , sample=paired_end),
+        expand("data/CHIPPROJ/QCfile/{sample}_1_trimmed.fq.gz", sample=single_end),
+        expand("data/CHIPPROJ/bam_bwfile/{sample}.sam", sample=sample_IDs),
+        "data/CHIPPROJ/bowtie.log",
+        expand("data/CHIPPROJ/bam_bwfile/{sample}_sorted.bam", sample=sample_IDs),
+        expand("data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam", sample=sample_IDs),
+        expand("data/CHIPPROJ/bam_bwfile/{sample}.metricsFile",sample=sample_IDs),
+        expand("data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam.bai", sample=sample_IDs),
+        expand("data/CHIPPROJ/bam_bwfile/{sample}.bw", sample=sample_IDs),
+        "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        expand("data/CHIPPROJ/Macs2/{group}/{group}_matrix_values.tab",group=GROUPS),
+        expand("data/CHIPPROJ/annotations/{group}/promoter_peaks.csv",group=GROUPS),
+
+
+# Paired-end processing rule
+rule paired_trimmed:
+    input:
+        p1 = "data/CHIPPROJ/fastqfile/{sample}_1.fastq",
+        p2 = "data/CHIPPROJ/fastqfile/{sample}_2.fastq"
+    output:
+        qc1 = "data/CHIPPROJ/QCfile/{sample}_1_val_1.fq.gz",
+        qc2 = "data/CHIPPROJ/QCfile/{sample}_2_val_2.fq.gz"    
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/CHIPPROJ/QCfile")
+    shell:
+        "trim_galore --paired --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input.p1} {input.p2}"
+        
+# Compressed format paired-end processing rule
+rule paired_trimmed_gz:
+    input:
+        p1 = "data/CHIPPROJ/fastqfile/{sample}_1.fastq.gz",
+        p2 = "data/CHIPPROJ/fastqfile/{sample}_2.fastq.gz"
+    output:
+        qc1 = "data/CHIPPROJ/QCfile/{sample}_1_val_1.fq.gz",
+        qc2 = "data/CHIPPROJ/QCfile/{sample}_2_val_2.fq.gz"      
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/CHIPPROJ/QCfile")
+    shell:
+        "trim_galore --paired --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input.p1} {input.p2}"
+        
+# Single-end processing rule
+rule single_trimmed:
+    input:
+        "data/CHIPPROJ/fastqfile/{sample}_1.fastq"
+    output:
+        "data/CHIPPROJ/QCfile/{sample}_1_trimmed.fq.gz"  
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/CHIPPROJ/QCfile")
+    shell:
+        "trim_galore --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input}"
+        
+# Compressed format single-end processing rule
+rule single_trimmed_gz:
+    input:
+        "data/CHIPPROJ/fastqfile/{sample}_1.fastq.gz"
+    output:
+        "data/CHIPPROJ/QCfile/{sample}_1_trimmed.fq.gz" 
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/CHIPPROJ/QCfile")
+    shell:
+        "trim_galore --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input}"
+
+# Alignment 
+rule bowtie2:
+    input:
+        lambda wildcards: (
+            [
+                "data/CHIPPROJ/QCfile/{sample}_1_val_1.fq.gz",
+                "data/CHIPPROJ/QCfile/{sample}_2_val_2.fq.gz"
+            ] 
+            if wildcards.sample in paired_end
+            else "data/CHIPPROJ/QCfile/{sample}_1_trimmed.fq.gz"
+        )
+    output:
+        sam = "data/CHIPPROJ/bam_bwfile/{sample}.sam",
+        sample_log = temp("{sample}_bowtie.tmp.log") 
+    params:
+        threads = config["threads"]["bowtie2"],
+        indexdir = config["genome"]["indexdir"],
+        bowtie2_opts = lambda wc, input: (
+            f"-1 {input[0]} -2 {input[1]}"
+            if wc.sample in paired_end 
+            else f"-U {input}"
+        )
+    shell:
+        """
+        echo '======== {wildcards.sample} Bowtie2 start ========' > {output.sample_log}
+        
+        bowtie2 -x {params.indexdir} \
+        -p {params.threads} \
+        -t -q -N 1 -L 25 --no-mixed --no-discordant \
+        --rg-id {wildcards.sample} \
+        --rg SM:{wildcards.sample} \
+        {params.bowtie2_opts} \
+        -S {output.sam} 2>> {output.sample_log}
+        
+        echo '======== {wildcards.sample} Bowtie2 end ========' >> {output.sample_log}
+        """
+
+# Log merging
+rule merge_bowtie_logs: 
+    input:
+        log_file=expand("{sample}_bowtie.tmp.log", sample=sample_IDs)
+    output:
+        "data/CHIPPROJ/bowtie.log" 
+    shell:
+        """
+        > {output}
+        for log_file in {input}; do
+            cat "$log_file" >> {output}
+            echo "" >> {output}  
+        done
+        """
+
+
+# Convert and sort BAM files
+rule samtools:
+    input:
+        "data/CHIPPROJ/bam_bwfile/{sample}.sam"
+    output:
+        "data/CHIPPROJ/bam_bwfile/{sample}_sorted.bam"
+    params:
+        threads=config["threads"]["samtools"]
+    shell:
+        "samtools view -bS {input} | samtools sort -@ {params.threads} -o {output}"
+        
+
+# Deduplication
+rule picard:
+    input:
+        "data/CHIPPROJ/bam_bwfile/{sample}_sorted.bam"
+    output:
+        unique_bam="data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam",
+        metrics_file="data/CHIPPROJ/bam_bwfile/{sample}.metricsFile"
+    params:
+        picarddir=config["picard"]["picarddir"],
+        java_mem=config["picard"]["java_mem"],
+        remove_dups=config["picard"]["remove_dups"] 
+    shell:
+        "java {params.java_mem} -jar {params.picarddir}/picard.jar MarkDuplicates I={input} O={output.unique_bam} METRICS_FILE={output.metrics_file} REMOVE_DUPLICATES={params.remove_dups}"
+        
+
+# Index deduplicated bam files
+rule picard_index:
+    input:
+        "data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam"
+    output:
+        "data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam.bai"
+    shell:
+        "samtools index {input}"
+        
+
+# Generate bigWig files
+rule bigWig:
+    input:
+        bam="data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam",
+        bai="data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam.bai"
+    output:
+        "data/CHIPPROJ/bam_bwfile/{sample}.bw"
+    params:
+        threads=config["threads"]["bigWig"]
+    shell:
+        "bamCoverage -b {input.bam} -of bigwig --binSize 5 --ignoreDuplicates --normalizeUsing BPM --numberOfProcessors {params.threads} -o {output}"
+    
+
+# Generate data/CHIPPROJ/Macs2 grouping files
+rule generate_bambw_list:
+    input:
+        config_file = "data/CHIPPROJ/config.yaml",
+        required_bw = expand("data/CHIPPROJ/bam_bwfile/{sample}.bw", sample=sample_IDs),
+        required_bam = expand("data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam", sample=sample_IDs)
+    output:
+        "data/CHIPPROJ/bam_bwfile/bambw_list.yaml"
+    run:
+        import yaml
+        from pathlib import Path
+
+        with open(input.config_file) as f_in:
+            config = yaml.safe_load(f_in)
+
+        Macs2_config = {}
+        for sample, params in config.get("Macs2", {}).items():
+            updated_params = {
+                "treat_bam": f"data/CHIPPROJ/bam_bwfile/{params['treat_bam']}_sorted.unique.bam",
+                "control_bam": f"data/CHIPPROJ/bam_bwfile/{params['control_bam']}_sorted.unique.bam",
+                "bw1": f"data/CHIPPROJ/bam_bwfile/{params['treat_bam']}.bw",
+                "bw2": f"data/CHIPPROJ/bam_bwfile/{params['control_bam']}.bw",
+                "genome": params["genome"],
+                "qval": params["qval"]
+            }
+            Macs2_config[sample] = updated_params
+
+        
+        Path(output[0]).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output[0], "w") as f_out:
+            yaml.safe_dump(
+                Macs2_config,
+                f_out,
+                default_flow_style=False,
+                sort_keys=False
+            )
+
+
+# Peak calling and related downstream processing
+rule run_peakcalling:
+    input:
+        yaml = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml",
+        bam_files = expand("data/CHIPPROJ/bam_bwfile/{sample}_sorted.unique.bam", sample=sample_IDs),
+        bw_files = expand("data/CHIPPROJ/bam_bwfile/{sample}.bw", sample=sample_IDs)
+    output:
+        expand("data/CHIPPROJ/Macs2/{group}/{group}_matrix_values.tab", group=GROUPS)
+    params:
+        outdir = "data/CHIPPROJ/Macs2",      
+        picdir = "data/CHIPPROJ/picture"    
+    shell:
+        "perl data/CHIPPROJ/scripts/peakcalling_script.pl --config {input.yaml} --outdir {params.outdir} --picdir {params.picdir}"
+
+# Genomic annotation and visualization analysis
+rule annoChIPPeaks:        
+    input:
+        yaml = "data/CHIPPROJ/bam_bwfile/bambw_list.yaml"
+    output:
+        expand("data/CHIPPROJ/annotations/{group}/promoter_peaks.csv",group=GROUPS)
+    params:
+        directory = "data/CHIPPROJ",  
+        output = "data/CHIPPROJ/annotations",  
+        pdf = "data/CHIPPROJ/pdf_plots" 
+    shell:
+        """
+        Rscript data/CHIPPROJ/scripts/annoChIPPeaks.R \
+            --directory {params.directory} \
+            --yaml {input.yaml} \
+            --output {params.output} \
+            --pdf {params.pdf} 
+        """

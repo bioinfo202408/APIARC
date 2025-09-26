@@ -1,0 +1,283 @@
+
+# Read configuration file
+configfile: "data/RNAPROJ/config.yaml"
+# Get Conda installation path from configuration file
+conda_install_path = config["conda_install_path"]
+# Initialize pre-run environment
+shell.prefix(f"source ~/.bashrc; source {conda_install_path}/etc/profile.d/conda.sh; conda activate APIARC; ")
+
+
+# Classify single-end and paired-end samples
+sample_IDs, comps, =glob_wildcards("data/RNAPROJ/fastqfile/{sample}_1.fastq{comp,(\.gz)?}")
+paired_end = []
+single_end = []
+for sample in sample_IDs:
+    # Check if corresponding _2 file exists
+    if os.path.exists(f"data/RNAPROJ/fastqfile/{sample}_2.fastq") or os.path.exists(f"data/RNAPROJ/fastqfile/{sample}_2.fastq.gz"):
+        paired_end.append(sample)  
+    else:
+        single_end.append(sample)  
+print(paired_end)
+print(single_end)
+
+
+
+# Generate output files
+rule all:
+    input:
+        expand("data/RNAPROJ/QCfile/{sample}_1_val_1.fq.gz" ,sample=paired_end),
+        expand("data/RNAPROJ/QCfile/{sample}_1_trimmed.fq.gz", sample=single_end),
+        "data/RNAPROJ/logs/hisat2_summary.log",
+        expand("data/RNAPROJ/mapping/{sample}_filtered.sam", sample=sample_IDs),
+        expand("data/RNAPROJ/mapping/{sample}_sorted.bam", sample=sample_IDs),
+        expand("data/RNAPROJ/mapping/{sample}_sorted.bam.bai", sample=sample_IDs),
+        expand("data/RNAPROJ/mapping/{sample}.dedup.bam", sample=sample_IDs),
+        expand("data/RNAPROJ/mapping/{sample}.dedup.bam.bai", sample=sample_IDs),
+        expand("data/RNAPROJ/expression/{sample}.transcripts.gtf", sample=sample_IDs),
+        "data/RNAPROJ/expression/sample_list.txt",
+        "data/RNAPROJ/DEG/gene_count_matrix.csv",
+        "data/RNAPROJ/DEG/transcript_count_matrix.csv",
+        "data/RNAPROJ/DEG/DEG_result.csv",
+        "data/RNAPROJ/DEG/UP_genes_name.csv",
+        "data/RNAPROJ/DEG/DOWN_genes_name.csv",
+        "data/RNAPROJ/picture/DOX/sample_PCA.pdf",
+
+
+# Paired-end processing rule
+rule paired_trimmed:
+    input:
+        p1 = "data/RNAPROJ/fastqfile/{sample}_1.fastq",
+        p2 = "data/RNAPROJ/fastqfile/{sample}_2.fastq"
+    output:
+        qc1 = "data/RNAPROJ/QCfile/{sample}_1_val_1.fq.gz",
+        qc2 = "data/RNAPROJ/QCfile/{sample}_2_val_2.fq.gz"    
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/RNAPROJ/QCfile")
+    shell:
+        "trim_galore --paired --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input.p1} {input.p2}"
+        
+# Compressed format paired-end processing rule
+rule paired_trimmed_gz:
+    input:
+        p1 = "data/RNAPROJ/fastqfile/{sample}_1.fastq.gz",
+        p2 = "data/RNAPROJ/fastqfile/{sample}_2.fastq.gz"
+    output:
+        qc1 = "data/RNAPROJ/QCfile/{sample}_1_val_1.fq.gz",
+        qc2 = "data/RNAPROJ/QCfile/{sample}_2_val_2.fq.gz"      
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/RNAPROJ/QCfile")
+    shell:
+        "trim_galore --paired --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input.p1} {input.p2}"
+        
+# Single-end processing rule
+rule single_trimmed:
+    input:
+        "data/RNAPROJ/fastqfile/{sample}_1.fastq"
+    output:
+        "data/RNAPROJ/QCfile/{sample}_1_trimmed.fq.gz"  
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/RNAPROJ/QCfile")
+    shell:
+        "trim_galore --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input}"
+        
+# Compressed format single-end processing rule
+rule single_trimmed_gz:
+    input:
+        "data/RNAPROJ/fastqfile/{sample}_1.fastq.gz"
+    output:
+        "data/RNAPROJ/QCfile/{sample}_1_trimmed.fq.gz" 
+    params:
+        threads=config["threads"]["trim_galore"],
+        output_dir=directory("data/RNAPROJ/QCfile")
+    shell:
+        "trim_galore --fastqc --cores {params.threads} --gzip -o {params.output_dir} {input}"
+
+
+# Alignment
+rule hisat2:
+    input:
+        lambda wildcards: (
+            [
+                "data/RNAPROJ/QCfile/{sample}_1_val_1.fq.gz",
+                "data/RNAPROJ/QCfile/{sample}_2_val_2.fq.gz"
+            ] 
+            if wildcards.sample in paired_end  
+            else "data/RNAPROJ/QCfile/{sample}_1_trimmed.fq.gz" 
+        )
+    output:
+        sam = "data/RNAPROJ/mapping/{sample}.sam",
+        sample_log = temp("data/RNAPROJ/logs/hisat2_tmp/{sample}.log")
+    params:
+        threads=config["threads"]["hisat2"],
+        indexdir=config["genome"]["indexdir"],
+        # Dynamically generate alignment parameters
+        hisat_opts=lambda wc, input: (
+            f"--dta -1 {input[0]} -2 {input[1]}"  
+            if wc.sample in paired_end 
+            else f"--dta -U {input}"  
+        )
+    shell:
+        """
+        hisat2 -x {params.indexdir} \
+            -p {params.threads} \
+            --rg-id {wildcards.sample} \
+            --rg SM:{wildcards.sample} \
+            {params.hisat_opts} \
+            -S {output.sam} 2> {output.sample_log}
+        """
+        
+
+# Alignment log merging
+rule merge_hisat_logs:
+    input:
+        logs = expand("data/RNAPROJ/logs/hisat2_tmp/{sample}.log", sample=sample_IDs),
+        sam_files = expand("data/RNAPROJ/mapping/{sample}.sam", sample=sample_IDs)  
+    output:
+        summary = "data/RNAPROJ/logs/hisat2_summary.log"  
+    run:
+        with open(output.summary, "w") as f_sum:
+            for log_file in input.logs:
+                sample = os.path.basename(log_file).replace(".log", "")
+                f_sum.write(f"===== {sample} =====\n")
+                with open(log_file) as f_log:
+                    f_sum.write(f_log.read())
+                f_sum.write("\n")
+
+
+# Filter SAM file
+rule filtered:
+    input:
+        "data/RNAPROJ/mapping/{sample}.sam"
+    output:
+        "data/RNAPROJ/mapping/{sample}_filtered.sam"
+    shell:
+        "grep -v -E -w 'NH:i:[2-9]|NH:i:1[0-9]|NH:i:20' {input} > {output}"
+        
+
+# Convert SAM file to BAM file and sort
+rule samtools:
+    input:
+        "data/RNAPROJ/mapping/{sample}_filtered.sam"
+    output:
+        "data/RNAPROJ/mapping/{sample}_sorted.bam"
+    params:
+        threads=config["threads"]["samtools"]
+    shell:
+        "samtools view -bS {input} | samtools sort -@ {params.threads} -o {output}"
+        
+
+# Index BAM file
+rule samtools_index:
+    input:
+        "data/RNAPROJ/mapping/{sample}_sorted.bam"
+    output:
+        "data/RNAPROJ/mapping/{sample}_sorted.bam.bai"
+    shell:
+        "samtools index {input}"
+        
+
+# Deduplication
+rule picard:
+    input:
+        "data/RNAPROJ/mapping/{sample}_sorted.bam"
+    output:
+        dedup_bam="data/RNAPROJ/mapping/{sample}.dedup.bam",
+        metrics_file="data/RNAPROJ/mapping/{sample}.metricsFile"
+    params:
+        picarddir=config["picard"]["picarddir"],
+        java_mem=config["picard"]["java_mem"],
+        remove_dups=config["picard"]["remove_dups"]  
+    shell:
+        "java {params.java_mem} -jar {params.picarddir}/picard.jar MarkDuplicates I={input} O={output.dedup_bam} METRICS_FILE={output.metrics_file} REMOVE_DUPLICATES={params.remove_dups} ASSUME_SORT_ORDER=coordinate"
+        
+
+# Index deduplicated BAM file
+rule picard_index:
+    input:
+        "data/RNAPROJ/mapping/{sample}.dedup.bam"
+    output:
+        "data/RNAPROJ/mapping/{sample}.dedup.bam.bai"
+    shell:
+        "env samtools index {input}"
+        
+
+# Transcript assembly
+rule stringtie:
+    input:
+        "data/RNAPROJ/mapping/{sample}.dedup.bam"
+    output:
+        transcripts_gtf="data/RNAPROJ/expression/{sample}.transcripts.gtf",
+        gene_abundance_txt="data/RNAPROJ/expression/{sample}.gene_abundance.txt"
+    params:
+        threads=config["threads"]["stringtie"],
+        gfffile=config["genome"]["gfffile"]
+    shell:
+        "env stringtie -p {params.threads} -e -B -G {params.gfffile} -A {output.gene_abundance_txt} -o {output.transcripts_gtf} {input}"
+        
+
+# Generate sample list file
+rule generate_sample_list:
+    input:
+        config_file = "data/RNAPROJ/config.yaml",
+        required_gtf = expand("data/RNAPROJ/expression/{sample}.transcripts.gtf", sample=sample_IDs)
+    output:
+        "data/RNAPROJ/expression/sample_list.txt"  
+    run:
+        import yaml
+        from pathlib import Path
+        
+        # Ensure output directory exists
+        Path(output[0]).parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(input.config_file) as f_in:
+            config = yaml.safe_load(f_in)
+        
+        # Get names section configuration
+        names_config = config.get("names", {})
+        
+        # Generate sample list content
+        with open(output[0], "w") as f_out:
+            for sample_name, srr_id in names_config.items():
+                gtf_path = f"data/RNAPROJ/expression/{srr_id}.transcripts.gtf"
+                f_out.write(f"{sample_name}\t{gtf_path}\n")
+
+
+# Gene and transcript expression matrix conversion
+rule prepDE_py3:
+    input:
+        "data/RNAPROJ/expression/sample_list.txt"
+    output:
+        gene_count_matrix="data/RNAPROJ/DEG/gene_count_matrix.csv",
+        transcript_count_matrix="data/RNAPROJ/DEG/transcript_count_matrix.csv"
+    shell:
+        "python data/RNAPROJ/scripts/prepDE.py3 -i {input} -g {output.gene_count_matrix} -t {output.transcript_count_matrix}"
+
+
+# Differential analysis
+rule deseq2:
+    input:
+        gene_count_matrix = "data/RNAPROJ/DEG/gene_count_matrix.csv",  
+        yaml="data/RNAPROJ/config.yaml"
+    output:
+        "data/RNAPROJ/DEG/DEG_result.csv"   
+    shell:
+        "Rscript data/RNAPROJ/scripts/RNAseq_DEseq.R --input {input.gene_count_matrix} --yaml {input.yaml} --output {output}"
+        
+
+# Differential analysis plotting
+rule deseq_plot:
+    input:
+        log="data/RNAPROJ/logs/hisat2_summary.log",
+        DEG_result="data/RNAPROJ/DEG/DEG_result.csv"
+    output:
+        up_csv="data/RNAPROJ/DEG/UP_genes_name.csv",
+        down_csv="data/RNAPROJ/DEG/DOWN_genes_name.csv",
+        PCA_pdf="data/RNAPROJ/picture/DOX/sample_PCA.pdf"
+    params:
+        updown_dir=directory("data/RNAPROJ/DEG"),
+        pdf_dir=directory("data/RNAPROJ/picture/DOX")
+    shell:
+        "Rscript data/RNAPROJ/scripts/DEseq_result_plot_pipline.R --log {input.log} --deg {input.DEG_result} --outdir_table {params.updown_dir} --outdir_plot {params.pdf_dir}"
